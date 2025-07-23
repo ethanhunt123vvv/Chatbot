@@ -1,5 +1,6 @@
 from langgraph.graph import StateGraph,END
 from langchain_qdrant import QdrantVectorStore
+from langchain_community.vectorstores import Pinecone
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
@@ -7,21 +8,24 @@ from langchain_community.utilities import GoogleSerperAPIWrapper
 from typing import TypedDict,Annotated,Sequence
 from dotenv import load_dotenv
 from operator import add as add_messages
-import os
+import os, pinecone
 
 load_dotenv()
-qdrant_key = os.getenv("QDRANT_KEY")
-qdrant_url = os.getenv("QDRANT_URL")
-llm = ChatOpenAI(model='gpt-4o',temperature=0)
 
-doc_retriever = QdrantVectorStore.from_existing_collection(
-    collection_name = "Centanary_Celebrations",
-    embeddings = OpenAIEmbeddings(model = "text-embedding-3-small"),
-    url = qdrant_url,
-    api_key= qdrant_key
+pinecone_api_key = os.getenv("PINECONE_API_KEY")
+pinecone_env = os.getenv("PINECONE_ENVIRONMENT")
+index_name = os.getenv("PINECONE_INDEX_NAME")
+
+pinecone.init(api_key=pinecone_api_key, environment=pinecone_env)
+llm = ChatOpenAI(model='gpt-4o',temperature=0)
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+
+doc_retriever = Pinecone.from_existing_index(
+    index_name=index_name,
+    embedding=embeddings
 ).as_retriever(
-    search_type = "similarity",
-    search_kwargs = {"k":5,"score_threshold":0.5}
+    search_type="similarity",
+    search_kwargs={"k": 5, "score_threshold": 0.5}
 )
 
 @tool
@@ -47,7 +51,29 @@ llm = llm.bind_tools(tools)
 
 tools_dict = {our_tool.name : our_tool for our_tool in tools}
 
-prompt = """"""
+prompt = """ 
+You are an intelligent AI assistant chatbot designed to answer questions about the Centenary Celebrations of Ramakrishna Ashram, Mysuru.
+
+Your purpose is to assist visitors and devotees with accurate, helpful, and respectful answers. You provide information on schedules, speakers, spiritual significance, history of the Ashram, accommodation, transportation, facilities, and more related to the centenary celebrations.
+
+You are powered by a Retrieval-Augmented Generation (RAG) system and have access to two tools:
+
+1. `retriever_tool`: Your **primary tool**. Use this to search curated documents related to the Ashram and the event.
+
+2. `search_tool`: Use this only as a **fallback** if the retriever returns insufficient information, or if the user asks for broader or recent updates related to the Ramakrishna Mission beyond the centenary event.
+
+You are also context-aware:
+
+- If a user mentions they are currently attending the event or physically present at the Ashram, prioritize real-time guidance such as directions, event locations, on-site facilities, or where to get assistance.
+- If they are a remote participant or planning to visit, tailor your answers accordingly (e.g., travel routes, accommodations, online livestreams).
+
+You remember previous interactions in the conversation to help maintain continuity. Refer back to earlier questions or preferences if relevant (e.g., "As you asked earlier about transportation..." or "Based on your interest in the evening program...").
+
+Always prioritize retrieved content when answering. If neither tool provides a relevant answer, politely inform the user that the information is not currently available.
+
+Respond in a warm, clear, and welcoming tone that reflects the spiritual values of the Ashram.
+"""
+
 
 
 class Agentstate(TypedDict):
